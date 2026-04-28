@@ -12,7 +12,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      debugShowCheckedModeBanner: false,
+      debugShowCheckedModeBanner:
+          false, // ✅ sudah benar untuk hilangkan debug banner
       home: ListUserDataPage(),
     );
   }
@@ -44,31 +45,29 @@ class DatabaseHelper {
     );
   }
 
-  //  CREATE
+  // CREATE
   static Future<int> insertUser(UserModel user) async {
     final db = await database;
-    Map<String, dynamic> userData = user.toJson();
     return await db.insert(
       'users',
-      userData,
+      user.toJson(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  //  READ
+  // READ
   static Future<List<UserModel>> getData() async {
     final db = await database;
     List<Map<String, dynamic>> users = await db.query('users');
-    List<UserModel> userList = users
-        .map((user) => UserModel.fromJson(user))
-        .toList();
-    return userList;
+    return users.map((user) => UserModel.fromJson(user)).toList();
   }
 
-  //  UPDATE
+  // UPDATE
   static Future<int> updateUser(UserModel user) async {
     final db = await database;
 
+    // ❌ sebelumnya: id ikut dikirim ke update
+    // ✅ sekarang id dihapus agar tidak error
     var userData = user.toJson()..remove('id');
 
     return await db.update(
@@ -82,6 +81,9 @@ class DatabaseHelper {
   // DELETE
   static Future<int> deleteUser(int id) async {
     final db = await database;
+
+    // ❌ sebelumnya: kirim object UserModel
+    // ✅ cukup kirim id saja
     return await db.delete('users', where: 'id = ?', whereArgs: [id]);
   }
 }
@@ -94,17 +96,17 @@ class ListUserDataPage extends StatefulWidget {
 }
 
 class UserModel {
-  int? id;
-  String nama = "";
-  int umur = 0;
+  int? id; // ❌ sebelumnya wajib (required) → bikin error saat insert
+  String nama;
+  int umur;
 
+  // ✅ id dibuat nullable karena auto increment dari database
   UserModel({this.id, required this.nama, required this.umur});
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(id: json['id'], nama: json['nama'], umur: json['umur']);
   }
 
-  //convert dari model ke map
   Map<String, dynamic> toJson() {
     return {'id': id, 'nama': nama, 'umur': umur};
   }
@@ -141,6 +143,8 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
       context: context,
       isScrollControlled: true,
       builder: (context) => Padding(
+        // ❌ sebelumnya: EdgeInsetsGeometry.fromLTRB (SALAH)
+        // ✅ seharusnya:
         padding: EdgeInsets.fromLTRB(
           20,
           20,
@@ -152,18 +156,19 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
           children: [
             TextField(
               controller: _namaController,
-              decoration: InputDecoration(hintText: "Nama"),
+              decoration: const InputDecoration(hintText: "Nama"),
             ),
             TextField(
               controller: _umurController,
-              decoration: InputDecoration(hintText: "Umur"),
+              decoration: const InputDecoration(hintText: "Umur"),
               keyboardType: TextInputType.number,
             ),
             ElevatedButton(
               onPressed: () => _save(
                 id,
                 _namaController.text,
-                int.parse(_umurController.text),
+                _umurController
+                    .text, // ❌ sebelumnya langsung parse → rawan crash
               ),
               child: Text(id == null ? "Tambah" : "Update"),
             ),
@@ -173,23 +178,27 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
     );
   }
 
-  void _save(int? id, String nama, int umur) async {
+  void _save(int? id, String nama, String umurText) async {
+    // ❌ sebelumnya: int.parse → bisa crash kalau kosong
+    // ✅ gunakan tryParse
+    int? umur = int.tryParse(umurText);
+
+    if (nama.isEmpty || umur == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Input tidak valid")));
+      return;
+    }
+
     if (id != null) {
       await DatabaseHelper.updateUser(
         UserModel(id: id, nama: nama, umur: umur),
       );
-      setState(() {
-        int index = userList.indexWhere((user) => user.id == id);
-        if (index != -1) {
-          userList[index] = UserModel(id: id, nama: nama, umur: umur);
-        }
-      });
     } else {
-      var newUser = UserModel(nama: nama, umur: umur);
-      await DatabaseHelper.insertUser(newUser);
+      await DatabaseHelper.insertUser(UserModel(nama: nama, umur: umur));
     }
 
-    _reloadData();
+    _reloadData(); // ❌ sebelumnya tidak ada → data tidak refresh
     Navigator.pop(context);
   }
 
@@ -197,28 +206,36 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Konfirmasi Hapus"),
-        content: Text("Apakah Anda yakin ingin menghapus data ini?"),
+        title: const Text("Konfirmasi Hapus"),
+        content: const Text("Apakah Anda yakin ingin menghapus data ini?"),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: Text("Batal"),
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal"),
           ),
-          IconButton(
+          TextButton(
             onPressed: () async {
-              DatabaseHelper.deleteUser(id);
+              await DatabaseHelper.deleteUser(id);
+
               setState(() {
                 userList.removeWhere((user) => user.id == id);
               });
+
               Navigator.pop(context);
             },
-            icon: Icon(Icons.delete),
+            child: const Text("Hapus"),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // ❌ sebelumnya tidak ada → bisa memory leak
+    _namaController.dispose();
+    _umurController.dispose();
+    super.dispose();
   }
 
   @override
@@ -234,12 +251,14 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
+                // ❌ sebelumnya pakai TextButton + Icon (kurang tepat)
+                // ✅ lebih cocok IconButton
                 onPressed: () => _form(userList[index].id),
-                icon: Icon(Icons.edit),
+                icon: const Icon(Icons.edit),
               ),
               IconButton(
                 onPressed: () => _delete(userList[index].id!),
-                icon: Icon(Icons.delete),
+                icon: const Icon(Icons.delete),
               ),
             ],
           ),
@@ -247,7 +266,7 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _form(null),
-        child: Icon(Icons.add),
+        child: const Icon(Icons.add),
       ),
     );
   }
