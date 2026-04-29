@@ -18,6 +18,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
+//Database Helper untuk mengelola operasi CRUD dengan SQLite
 class DatabaseHelper {
   static Database? _database;
 
@@ -37,7 +38,7 @@ class DatabaseHelper {
           CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nama TEXT,
-            umur INTEGER
+            umur INTEGER  
           )
         ''');
       },
@@ -214,7 +215,7 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
               });
               Navigator.pop(context);
             },
-            icon: Icon(Icons.delete),
+            icon: Icon(Icons.delete, color: Colors.red),
           ),
         ],
       ),
@@ -239,7 +240,7 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
               ),
               IconButton(
                 onPressed: () => _delete(userList[index].id!),
-                icon: Icon(Icons.delete),
+                icon: Icon(Icons.delete, color: Colors.red),
               ),
             ],
           ),
